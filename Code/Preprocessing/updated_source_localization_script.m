@@ -69,10 +69,355 @@ for i = 1:100
     end
 end
 
-%%
-session1 = 1:1:40;
-session2 = 41:1:70;
-session3 = 71:1:100;
+
+%% Compute Covariance Matrices for Each Trial (Subject 1 & 2)
+
+% Initialize storage
+subject_1.rest_cov = cell(1, 100);
+subject_1.move_cov = cell(1, 100);
+subject_2.rest_cov = cell(1, 100);
+subject_2.move_cov = cell(1, 100);
+
+for i = 1:100
+    % Subject 1
+    rest_src_1 = subject_1.rest_SRC{i};  % size: 4 × T
+    move_src_1 = subject_1.move_SRC{i};
+
+    subject_1.rest_cov{i} = cov(rest_src_1');  % → 4×4
+    subject_1.move_cov{i} = cov(move_src_1');
+
+    % Subject 2
+    rest_src_2 = subject_2.rest_SRC{i};
+    move_src_2 = subject_2.move_SRC{i};
+
+    subject_2.rest_cov{i} = cov(rest_src_2');
+    subject_2.move_cov{i} = cov(move_src_2');
+end
+%% Feature Extraction (From Covariance Matrices)
+num_trials = 100;
+
+% Preallocate
+subject_1.features_rest = zeros(num_trials, 2);
+subject_1.features_move = zeros(num_trials, 2);
+subject_2.features_rest = zeros(num_trials, 2);
+subject_2.features_move = zeros(num_trials, 2);
+
+for i = 1:num_trials
+    % Subject 1 – Rest
+    C = subject_1.rest_cov{i};
+    eigVals = eig(C);
+    subject_1.features_rest(i,1) = max(abs(eigVals));     % Largest eigenvalue
+    subject_1.features_rest(i,2) = norm(C, 'fro');        % Frobenius norm
+
+    % Subject 1 – Move
+    C = subject_1.move_cov{i};
+    eigVals = eig(C);
+    subject_1.features_move(i,1) = max(abs(eigVals));
+    subject_1.features_move(i,2) = norm(C, 'fro');
+
+    % Subject 2 – Rest
+    C = subject_2.rest_cov{i};
+    eigVals = eig(C);
+    subject_2.features_rest(i,1) = max(abs(eigVals));
+    subject_2.features_rest(i,2) = norm(C, 'fro');
+
+    % Subject 2 – Move
+    C = subject_2.move_cov{i};
+    eigVals = eig(C);
+    subject_2.features_move(i,1) = max(abs(eigVals));
+    subject_2.features_move(i,2) = norm(C, 'fro');
+end
+%% --- Extended Feature Extraction (5 features) ---
+
+num_trials = 100;
+feature_names = {...
+  'MaxEig', ...            % λ_max
+  'EigRatio', ...          % λ_max / λ_min
+  'FrobeniusNorm', ...     % ‖C‖_F
+  'LogDet', ...            % log det(C)
+  'Trace' ...              % tr(C)
+};
+
+% Preallocate [trials × 5]
+subject_1.features_rest = zeros(num_trials,5);
+subject_1.features_move = zeros(num_trials,5);
+subject_2.features_rest = zeros(num_trials,5);
+subject_2.features_move = zeros(num_trials,5);
+
+for i = 1:num_trials
+  % --- Subject 1 ---
+  C = subject_1.rest_cov{i};
+  lambda = eig(C);
+  subject_1.features_rest(i,:) = [ ...
+    max(lambda), ...
+    max(lambda)/min(lambda), ...
+    norm(C,'fro'), ...
+    log(det(C)), ...
+    trace(C) ...
+  ];
+  
+  C = subject_1.move_cov{i};
+  lambda = eig(C);
+  subject_1.features_move(i,:) = [ ...
+    max(lambda), ...
+    max(lambda)/min(lambda), ...
+    norm(C,'fro'), ...
+    log(det(C)), ...
+    trace(C) ...
+  ];
+
+  % --- Subject 2 ---
+  C = subject_2.rest_cov{i};
+  lambda = eig(C);
+  subject_2.features_rest(i,:) = [ ...
+    max(lambda), ...
+    max(lambda)/min(lambda), ...
+    norm(C,'fro'), ...
+    log(det(C)), ...
+    trace(C) ...
+  ];
+
+  C = subject_2.move_cov{i};
+  lambda = eig(C);
+  subject_2.features_move(i,:) = [ ...
+    max(lambda), ...
+    max(lambda)/min(lambda), ...
+    norm(C,'fro'), ...
+    log(det(C)), ...
+    trace(C) ...
+  ];
+end
+%% --- Fisher‐Score Computation per Session & Feature ---
+
+% we already have:
+%   subject_1.features_rest  (100×5), subject_1.features_move  (100×5)
+%   subject_2.features_rest  (100×5), subject_2.features_move  (100×5)
+
+sessions   = {1:40, 41:70, 71:100};
+session_names = {'Session 1','Session 2','Session 3'};
+nFeat = 5;   % number of features
+nSess = numel(sessions);
+
+% Preallocate
+subject_1.fisher_scores = zeros(nSess,nFeat);
+subject_2.fisher_scores = zeros(nSess,nFeat);
+group_fisher         = zeros(nSess,nFeat);
+
+for subj = 1:2
+  % pick the right fields
+  feats_rest = eval(sprintf('subject_%d.features_rest',subj));  % 100×5
+  feats_move = eval(sprintf('subject_%d.features_move',subj));  % 100×5
+  
+  F = zeros(nSess,nFeat);
+  for s = 1:nSess
+    idx = sessions{s};
+    R = feats_rest(idx,:);    % nTrials×5
+    M = feats_move(idx,:);
+
+    muR = mean(R,1);          % 1×5
+    muM = mean(M,1);
+    varR = var(R,0,1);        % 1×5  (unbiased via N–1)
+    varM = var(M,0,1);
+
+    F(s,:) = abs(muR - muM) ./ sqrt(varR + varM);
+  end
+
+  eval(sprintf('subject_%d.fisher_scores = F;',subj));
+end
+
+%% --- (Optional) Group‐level Fisher, pooling both subjects ---
+
+for s = 1:nSess
+  idx = sessions{s};
+
+  R_all = [ subject_1.features_rest(idx,:)
+            subject_2.features_rest(idx,:) ];
+  M_all = [ subject_1.features_move(idx,:)
+            subject_2.features_move(idx,:) ];
+
+  muR = mean(R_all,1);
+  muM = mean(M_all,1);
+  varR = var(R_all,0,1);
+  varM = var(M_all,0,1);
+
+  group_fisher(s,:) = abs(muR - muM) ./ sqrt(varR + varM);
+end
+
+%% --- Display as a table or bar chart ---
+
+% Subject 1
+disp('Subject 1 Fisher scores (sessions × features):');
+disp(array2table(subject_1.fisher_scores, ...
+  'VariableNames',feature_names, ...
+  'RowNames',session_names));
+
+% bar-plot for Subject 1
+figure;
+bar(subject_1.fisher_scores);
+set(gca,'XTick',1:3,'XTickLabel',session_names);
+legend(feature_names,'Interpreter','none','Location','best');
+ylabel('Fisher Score');
+title('Subject 1 Discriminability per Feature across Sessions');
+
+% --- Continue from your Subject 1 plot block ---
+
+% Subject 2
+disp('Subject 2 Fisher scores (sessions × features):');
+disp(array2table(subject_2.fisher_scores, ...
+  'VariableNames',feature_names, ...
+  'RowNames',session_names));
+
+figure;
+bar(subject_2.fisher_scores);
+set(gca,'XTick',1:3,'XTickLabel',session_names);
+legend(feature_names,'Interpreter','none','Location','best');
+ylabel('Fisher Score');
+title('Subject 2 Discriminability per Feature across Sessions');
+grid on;
+
+% Group-level
+disp('Group-level Fisher scores (sessions × features):');
+disp(array2table(group_fisher, ...
+  'VariableNames',feature_names, ...
+  'RowNames',session_names));
+
+figure;
+bar(group_fisher);
+set(gca,'XTick',1:3,'XTickLabel',session_names);
+legend(feature_names,'Interpreter','none','Location','best');
+ylabel('Fisher Score');
+title('Group-level Discriminability per Feature across Sessions');
+grid on;
+
+
+%% --- Pairwise scatter plots ---
+
+% define sessions
+sessions   = {1:40, 41:70, 71:100};
+session_names = {'Session 1','Session 2','Session 3'};
+pairs = nchoosek(1:5,2);
+
+colors = lines(2);   % [blue; red]
+
+for subj = 1:2
+  feats_rest = eval(sprintf('subject_%d.features_rest', subj));
+  feats_move = eval(sprintf('subject_%d.features_move', subj));
+  for s = 1:3
+    idx = sessions{s};
+    for p = 1:size(pairs,1)
+      f1 = pairs(p,1);
+      f2 = pairs(p,2);
+
+      figure;
+      hold on;
+      scatter( feats_rest(idx,f1), feats_rest(idx,f2), 40, colors(1,:), 'filled' );
+      scatter( feats_move(idx,f1), feats_move(idx,f2), 40, colors(2,:), 'filled' );
+      xlabel(feature_names{f1}, 'Interpreter','none');
+      ylabel(feature_names{f2}, 'Interpreter','none');
+      title(sprintf('Subject %d — %s: %s vs %s', subj, session_names{s}, ...
+        feature_names{f1}, feature_names{f2}));
+      legend('Rest','Move','Location','best');
+      grid on;
+      hold off;
+    end
+  end
+end
+
+%% --- Group-level plots (overlay Subj1 & Subj2) ---
+for s = 1:3
+  idx = sessions{s};
+  for p = 1:size(pairs,1)
+    f1 = pairs(p,1);
+    f2 = pairs(p,2);
+
+    figure;
+    hold on;
+    % Subj1
+    scatter( subject_1.features_rest(idx,f1), subject_1.features_rest(idx,f2), 36, 'o', ...
+             'MarkerFaceColor',colors(1,:), 'MarkerEdgeColor','k', 'DisplayName','Rest S1');
+    scatter( subject_1.features_move(idx,f1), subject_1.features_move(idx,f2), 36, 'o', ...
+             'MarkerFaceColor',colors(2,:), 'MarkerEdgeColor','k', 'DisplayName','Move S1');
+    % Subj2
+    scatter( subject_2.features_rest(idx,f1), subject_2.features_rest(idx,f2), 36, 's', ...
+             'MarkerFaceColor',colors(1,:), 'MarkerEdgeColor','k', 'DisplayName','Rest S2');
+    scatter( subject_2.features_move(idx,f1), subject_2.features_move(idx,f2), 36, 's', ...
+             'MarkerFaceColor',colors(2,:), 'MarkerEdgeColor','k', 'DisplayName','Move S2');
+
+    xlabel(feature_names{f1}, 'Interpreter','none');
+    ylabel(feature_names{f2}, 'Interpreter','none');
+    title(sprintf('Group — %s: %s vs %s', session_names{s}, ...
+      feature_names{f1}, feature_names{f2}));
+    legend('Location','best');
+    grid on;
+    hold off;
+  end
+end
+
+
+%% Feature Discriminability
+% Define session indices
+session1 = 1:40;
+session2 = 41:70;
+session3 = 71:100;
+
+% Colors
+colors = lines(2); % 1: rest (blue), 2: move (red)
+
+sessions = {session1, session2, session3};
+session_names = {'Session 1', 'Session 2', 'Session 3'};
+
+% SUBJECT 1 PLOTS
+for s = 1:3
+    idx = sessions{s};
+
+    figure;
+    hold on;
+    scatter(subject_1.features_rest(idx, 1), subject_1.features_rest(idx, 2), 50, colors(1,:), 'filled', 'DisplayName', 'Rest');
+    scatter(subject_1.features_move(idx, 1), subject_1.features_move(idx, 2), 50, colors(2,:), 'filled', 'DisplayName', 'Move');
+    title(['Subject 1 — ', session_names{s}]);
+    xlabel('Largest Eigenvalue');
+    ylabel('Frobenius Norm');
+    legend;
+    grid on;
+    hold off;
+end
+
+% SUBJECT 2 PLOTS
+for s = 1:3
+    idx = sessions{s};
+
+    figure;
+    hold on;
+    scatter(subject_2.features_rest(idx, 1), subject_2.features_rest(idx, 2), 50, colors(1,:), 'filled', 'DisplayName', 'Rest');
+    scatter(subject_2.features_move(idx, 1), subject_2.features_move(idx, 2), 50, colors(2,:), 'filled', 'DisplayName', 'Move');
+    title(['Subject 2 — ', session_names{s}]);
+    xlabel('Largest Eigenvalue');
+    ylabel('Frobenius Norm');
+    legend;
+    grid on;
+    hold off;
+end
+
+% GROUP LEVEL PLOTS
+for s = 1:3
+    idx = sessions{s};
+
+    figure;
+    hold on;
+    scatter(subject_1.features_rest(idx, 1), subject_1.rest_feat(idx, 2), 40, colors(1,:), 'o', 'DisplayName', 'Rest S1');
+    scatter(subject_1.features_move(idx, 1), subject_1.move_feat(idx, 2), 40, colors(2,:), 'o', 'DisplayName', 'Move S1');
+    scatter(subject_2.features_rest(idx, 1), subject_2.rest_feat(idx, 2), 40, colors(1,:), 's', 'DisplayName', 'Rest S2');
+    scatter(subject_2.features_move(idx, 1), subject_2.move_feat(idx, 2), 40, colors(2,:), 's', 'DisplayName', 'Move S2');
+    title(['Group — ', session_names{s}]);
+    xlabel('Largest Eigenvalue');
+    ylabel('Frobenius Norm');
+    legend;
+    grid on;
+    hold off;
+end
+
+
+
 %% Functions
 function [left_trials, right_trials] = extract_trials(session)
     left_trials = {};
