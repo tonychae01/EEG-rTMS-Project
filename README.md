@@ -1,1 +1,1 @@
-# EEG-rTMS-Project---Neural-Engineering374N
+# EEG-rTMS-Project
