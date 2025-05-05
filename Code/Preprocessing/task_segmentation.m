@@ -1,0 +1,52 @@
+clc; clear all;
+
+%% Load Data
+subj1 = load("../subj_204.mat");
+subj2 = load("../subj_210.mat"); 
+
+%% subject_1 and subject_2 are result of task segmentation
+% this assumes subj1 & subj2 data are already in struct format
+% Each file have rest_EEG and move_EEG, each have 100 trials (1run =
+% 10trial, Session 1 = 4 runs (40 trial per class), Session 2: 3 runs (30 trial per class) ,  Session 3(after rTMS): 3 runs (30 trial per class)
+
+%% Extract Task Periods
+
+% Subject 1
+subject_1.rest_EEG = {};
+subject_1.move_EEG = {};
+[subject_1.rest_EEG{end + 1}, subject_1.move_EEG{end+1}] = extract_trials(subj1.proj_sub_204.online);
+
+% Subject 2
+subject_2.rest_EEG = {};
+subject_2.move_EEG = {};
+[subject_2.rest_EEG{end + 1}, subject_2.move_EEG{end+1}] = extract_trials(subj2.proj_sub_210.online);
+
+
+
+%% Functions
+function [rest_trials, move_trials] = extract_trials(session)
+    rest_trials = {};
+    move_trials = {};
+    runs = length(session.run);
+    for i = 1:runs
+        EEG = session.run(i).eeg.data';
+        rest_start_indices = find(session.run(i).header.triggers.TYP == 7691);
+        move_start_indices = find(session.run(i).header.triggers.TYP == 7701);
+        
+        rest_eeg_start_POS = session.run(i).header.triggers.POS(rest_start_indices);
+        rest_eeg_end_POS = session.run(i).header.triggers.POS(rest_start_indices+1);
+        move_eeg_start_POS = session.run(i).header.triggers.POS(move_start_indices); 
+        move_eeg_end_POS = session.run(i).header.triggers.POS(move_start_indices+1);
+
+        iteration = length(rest_eeg_start_POS);
+        for j = 1:iteration
+            trial_R = EEG(rest_eeg_start_POS(j):rest_eeg_end_POS(j), :);
+            trial_M = EEG(move_eeg_start_POS(j):move_eeg_end_POS(j), :);
+            rest_trials{end + 1} = trial_R;
+            move_trials{end + 1} = trial_M;
+        end
+
+    end
+
+end
+
