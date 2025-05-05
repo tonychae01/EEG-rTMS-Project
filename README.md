@@ -102,6 +102,3 @@ Read our full report here: [`Neural_Engineering_Project_Report.pdf`](./Neural_En
 
 > Chae, T., Fletcher, E., Niu, H., Zhou, Y. (2025). *Evaluating the Impact of Inhibitory rTMS on Source-Localized BCI Training for Motor Imagery*. UT Austin, Neural Engineering Course 374N/385J.
 
----
-
-Would you also like a `LICENSE` file or instructions for running the pipeline end-to-end?
